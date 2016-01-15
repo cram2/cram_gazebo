@@ -27,6 +27,23 @@
 
 (in-package :gazebo-perception-process-module)
 
+; Generate logs - copied from the robosherlock perception module...
+(cut:define-hook cram-language::on-prepare-perception-request (designator-request))
+(cut:define-hook cram-language::on-finish-perception-request (log-id designators-result))
+
+; The following stuff is copied from cram-task-knowledge since it is not yet available in cram2...
+(define-hook objects-perceived (object-template object-designators))
+(defgeneric filter-perceived-objects (template-designator perceived-objects))
+(defgeneric filter-perceived-objects (object-template perceived-objects)
+  (:documentation "Filters all perceived objects according to all registered filters. This method is mainly used by perception process modules that want to validate and filter their results. Also, this function triggers the `object-perceived-event' plan event, updating the belief state.")
+  (:method (object-template perceived-objects)
+    (let* ((filtered-objects
+             (loop for filter-result in (objects-perceived
+                                         object-template perceived-objects)
+                   append filter-result)))
+      filtered-objects)))
+
+; Start of the original module
 (defmethod designator-pose ((designator object-designator))
   (object-pose (reference designator)))
 
@@ -41,15 +58,15 @@ properties of `perceived-object'.")
   (:method ((old-desig object-designator)
             (perceived-object object-designator-data))
     (let ((obj-loc-desig (make-designator
-                          'location
-                          `((pose ,(object-pose perceived-object)))))
-          (object-name (or (when (desig-prop-value old-desig 'desig-props:name)
-                             (desig-prop-value old-desig 'desig-props:name))
+                          :location
+                          `((:pose ,(object-pose perceived-object)))))
+          (object-name (or (when (desig-prop-value old-desig :name)
+                             (desig-prop-value old-desig :name))
                            (object-identifier perceived-object))))
-      `((desig-props:at ,obj-loc-desig)
-        (desig-props:name ,object-name)
+      `((:at ,obj-loc-desig)
+        (:name ,object-name)
         ,@(remove-if (lambda (element)
-                       (member element '(at type name)))
+                       (member element '(:at type :name)))
                      (description old-desig) :key #'car)))))
 
 (defun make-handle-designator-sequence (handles)
@@ -61,11 +78,11 @@ purposes."
   (mapcar (lambda (handle-desc)
             (destructuring-bind (pose radius) handle-desc
               `(handle
-                ,(make-designator 'object
-                                  `((at ,(make-designator
-                                          'location `((pose ,pose))))
-                                    (radius ,radius)
-                                    (type handle))))))
+                ,(make-designator :object
+                                  `((:at ,(make-designator
+                                          :location `((:pose ,pose))))
+                                    (:radius ,radius)
+                                    (:type handle))))))
           handles))
 
 (defun find-object (&key object-name object-type)
@@ -78,7 +95,7 @@ given, all known objects from the knowledge base are returned."
                 (model-pose (cram-gazebo-utilities:get-model-pose
                              object-name)))
            (when model-pose
-             (list (make-instance 'gazebo-designator-shape-data
+             (list ( make-instance 'gazebo-designator-shape-data
                                   :object-identifier obj-symbol
                                   :pose model-pose)))))
         (object-type
@@ -108,8 +125,8 @@ given, all known objects from the knowledge base are returned."
 
 (defun find-with-designator (designator)
   (with-desig-props (desig-props::name desig-props::type) designator
-    (let* ((at (desig-prop-value designator 'desig-props::at))
-           (pose-in-at (desig-prop-value at 'desig-props::pose))
+    (let* ((at (desig-prop-value designator :at))
+           (pose-in-at (desig-prop-value at :pose))
            (filter-function
              (cond ((and at (not pose-in-at))
                     (lambda (object-check)
@@ -121,14 +138,14 @@ given, all known objects from the knowledge base are returned."
                              (pose (desig-prop-value
                                     (desig-prop-value
                                      object-check
-                                     'desig-props::at)
-                                    'desig-props::pose))
+                                     :at)
+                                    :pose))
                              (pose-elevated
-                               (tf:copy-pose
+                               (cl-transforms:copy-pose
                                 pose
-                                :origin (tf:make-3d-vector (tf:x (tf:origin pose))
-                                                           (tf:y (tf:origin pose))
-                                                           (tf:z (tf:origin sample))))))
+                                :origin (cl-transforms:make-3d-vector (cl-transforms:x (cl-transforms:origin pose))
+                                                           (cl-transforms:y (cl-transforms:origin pose))
+                                                           (cl-transforms:z (cl-transforms:origin sample))))))
                         (not (validate-location-designator-solution at pose-elevated)))))
                    (t #'not))))
       (remove-if
@@ -141,9 +158,9 @@ given, all known objects from the knowledge base are returned."
 
 (def-process-module gazebo-perception-process-module (input)
   (assert (typep input 'action-designator))
-  (let ((object-designator (desig-prop-value input 'desig-props::obj)))
-    (ros-info (gazebo perception-process-module)
-              "Searching for object ~a" object-designator)
-    (cram-task-knowledge:filter-perceived-objects
-     object-designator
-     (find-with-designator object-designator))))
+  (let* ((object-designator (desig-prop-value input :obj))
+	 (log-id (first (cram-language::on-prepare-perception-request object-designator))))
+    (ros-info (gazebo perception-process-module) "Searching for object ~a" object-designator)
+    (let ((results (filter-perceived-objects object-designator (find-with-designator object-designator))))
+         (cram-language::on-finish-perception-request log-id results)
+	 (if (not results) (cpl:fail 'cram-plan-failures:object-not-found :object-desig object-designator) results))))

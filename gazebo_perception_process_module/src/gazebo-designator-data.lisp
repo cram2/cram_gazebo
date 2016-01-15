@@ -35,11 +35,11 @@
   ((type :initarg :type :reader object-type)))
 
 (defclass gazebo-designator-mesh-data
-    (gazebo-designator-data cram-manipulation-knowledge:object-mesh-data-mixin)
+    (gazebo-designator-data cram-physics-utils:object-mesh-data-mixin)
   ())
 
 (defclass gazebo-designator-shape-data
-    (gazebo-designator-data cram-manipulation-knowledge:object-shape-data-mixin)
+    (gazebo-designator-data cram-physics-utils:object-shape-data-mixin)
   ())
 
 (defun get-object-geometry (urdf &key (mesh-identifier :visual))

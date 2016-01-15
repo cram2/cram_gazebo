@@ -32,16 +32,16 @@
                 'gazebo_msgs-srv:setmodelstate
                 :model_state (make-msg "gazebo_msgs/ModelState"
                                        :model_name model-name
-                                       :pose (tf:pose->msg new-pose)
-                                       :reference_frame (tf:frame-id new-pose))))
+                                       :pose (cl-transforms-stamped:to-msg new-pose)
+                                       :reference_frame (cl-transforms-stamped:frame-id new-pose))))
 
 (defun spawn-gazebo-model (name pose urdf-file)
   (call-service "gazebo/spawn_urdf_model"
                 'gazebo_msgs-srv:spawnmodel
                 :model_name name
                 :model_xml (file-string urdf-file)
-                :initial_pose (tf:pose->msg pose)
-                :reference_frame (tf:frame-id pose)))
+                :initial_pose (cl-transforms-stamped:to-msg pose)
+                :reference_frame (cl-transforms-stamped:frame-id pose)))
 
 (defun delete-gazebo-model (name)
   (call-service "gazebo/delete_model"

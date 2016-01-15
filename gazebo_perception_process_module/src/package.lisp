@@ -30,12 +30,10 @@
   (:nicknames :gazebo-perception-pm)
   (:use
    #:common-lisp
-   #:cram-roslisp-common
-   #:cram-reasoning
+   #:cram-prolog
    #:cram-process-modules
    #:cram-designators
    #:cut
-   #:designators-ros
    #:roslisp
    #:cram-plan-failures)
   (:export #:gazebo-perception-process-module)

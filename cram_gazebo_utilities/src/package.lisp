@@ -33,17 +33,17 @@
  (:nicknames :cram-gu)
  (:use
   #:common-lisp
-  #:cram-roslisp-common
-  #:cram-reasoning
+  #:cram-prolog
   #:cram-process-modules
   #:cram-plan-library
-  #:crs
+;  #:crs
   #:cut
   #:desig
-  #:designators-ros
+;  #:designators-ros
   #:roslisp
   #:cram-plan-failures
-  #:semantic-map-cache)
+;  #:semantic-map-cache
+  )
   (:export init-cram-gazebo-utilities
            get-model-pose set-model-state
            spawn-gazebo-model object-in-world?
