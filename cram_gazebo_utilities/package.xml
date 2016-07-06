@@ -1,0 +1,20 @@
+<package>
+  <name>cram_gazebo_utilities</name>
+  <version>0.1.0</version>
+
+  <description>
+    cram_gazebo_utilities
+  </description>
+
+  <author>Jan Winkler</author>
+  <maintainer email="winkler@cs.uni-bremen.de">Jan Winkler</maintainer>
+  <license>BSD</license>
+  <url type="website">http://ros.org/wiki/cram_gazebo_utilities</url>
+  <url type="bugtracker">http://ros.org/wiki/cram_gazebo_utilities/issues</url>
+  <url type="repository">http://ros.org/wiki/cram_gazebo_utilities</url>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+</package>
+
+
