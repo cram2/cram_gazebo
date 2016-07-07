@@ -89,6 +89,19 @@ element (:VISUAL) or the collision element (:COLLISION)."
                              (physics-utils:face-points face)))
            faces))))
 
+(defun urdf-mesh->3d-model (mesh)
+  (let* ((filename (cl-urdf:filename mesh))
+         (scale (cl-urdf:scale mesh))
+         (size (cl-urdf:size mesh))
+         (3d-model (physics-utils:load-3d-model filename))
+         (3d-model (if size 
+                     (physics-utils:resize-3d-model 3d-model size)
+                     3d-model))
+         (3d-model (if (and scale (not (equal scale 1)) (not (equal scale 1.0)) (not (equal scale (cl-transforms:make-3d-vector 1.0 1.0 1.0))))
+                     (physics-utils:scale-3d-model 3d-model scale)
+                     3d-model)))
+    3d-model))
+
 (defgeneric geometry->designator-data (name pose type geometry
                                        &optional geometry-pose)
   (:documentation "Returns an instance of a subclass of
@@ -97,7 +110,8 @@ element (:VISUAL) or the collision element (:COLLISION)."
   (:method (name pose type (mesh cl-urdf:mesh)
             &optional (geometry-pose (cl-transforms:make-identity-pose)))
     (let ((mesh (physics-utils:transform-3d-model
-                 (physics-utils:3d-model mesh) geometry-pose)))
+;; TODO: apply scale and/or size to the loaded model
+                 (urdf-mesh->3d-model mesh) geometry-pose)))
       (make-instance 'gazebo-designator-mesh-data
         :object-identifier name
         :type type
