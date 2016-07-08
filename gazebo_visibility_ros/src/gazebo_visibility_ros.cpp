@@ -11,6 +11,7 @@
 #include <gazebo/physics/RayShape.hh>
 #include <gazebo/physics/MultiRayShape.hh>
 #include <gazebo/physics/PhysicsEngine.hh>
+#include <gazebo/physics/Collision.hh>
 
 #include <gazebo_visibility_ros/QueryGazeboVisibility.h>
 
@@ -67,19 +68,30 @@ bool inImage(math::Vector3 const& start, math::Vector3 const& end, math::Vector3
     return ((sideAngle <= sA) && (upAngle <= uA));
 }
 
+std::string trimSubEnts(std::string const& name)
+{
+    return name.substr(0, name.find(':'));
+}
+
 bool doQueryGazeboVisibility(physics::WorldPtr world, sdf::ElementPtr sdf, gazebo_visibility_ros::QueryGazeboVisibility::Request &request, gazebo_visibility_ros::QueryGazeboVisibility::Response &response)
 {
+    ROS_INFO("Got QueryGazeboVisibility service request.");
     physics::ModelPtr model = world->GetModel(request.name);
     if((!model.get()))
     {
+        ROS_INFO("Model name not loaded.");
         response.visible = false;
         return true;
     }
+    ROS_INFO("Model name seems to make sense.");
 
     math::Box bbox = model->GetBoundingBox();
     //math::Pose pose = model->GetWorldPose();
 
-    gazebo::physics::RayShapePtr ray = boost::dynamic_pointer_cast<gazebo::physics::RayShape>(world->GetPhysicsEngine()->CreateShape("ray", gazebo::physics::CollisionPtr()));
+    gazebo::physics::PhysicsEnginePtr engine = world->GetPhysicsEngine();
+    engine->InitForThread();
+
+    gazebo::physics::RayShapePtr ray = boost::dynamic_pointer_cast<gazebo::physics::RayShape>(engine->CreateShape("ray", gazebo::physics::CollisionPtr()));
     math::Vector3 start, cameraFwd, cameraSide, cameraUp;
     start.x = request.camera_pose.x;
     start.y = request.camera_pose.y;
@@ -109,6 +121,7 @@ bool doQueryGazeboVisibility(physics::WorldPtr world, sdf::ElementPtr sdf, gazeb
     std::vector<math::Vector3> points;
 
     getBBoxGrid(bbox, 8, points);
+    ROS_INFO("Got a grid of points to test.");
 
     int maxK = points.size();
     int okPoints = 0;
@@ -121,10 +134,11 @@ bool doQueryGazeboVisibility(physics::WorldPtr world, sdf::ElementPtr sdf, gazeb
             double dist;
             std::string entityName;
             ray->GetIntersection(dist, entityName);
-            if(request.name == entityName)
+            if(request.name == trimSubEnts(entityName))
                 okPoints++;
         }
     }
+    ROS_INFO("Done with raytrace.");
 
     response.visible = false;
     if(request.threshold <= (okPoints*1.0)/(maxK*1.0))
