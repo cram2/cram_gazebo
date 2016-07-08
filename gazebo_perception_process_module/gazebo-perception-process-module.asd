@@ -41,7 +41,8 @@
                cram-projection
                cram-physics-utils
                cl-urdf
-               cram-gazebo-utilities)
+               cram-gazebo-utilities
+               gazebo_visibility_ros-srv)
   :components
   ((:module "src"
     :components
