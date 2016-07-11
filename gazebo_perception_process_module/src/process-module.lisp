@@ -42,10 +42,17 @@
       (roslisp:wait-duration 1.0)))
   *tf-listener*)
 
+(defun destroy-tf-listener ()
+  (setf *tf-listener* nil))
+
+(roslisp-utilities:register-ros-cleanup-function destroy-tf-listener)
+
+
 (defmethod objects-perceived (object-template object-designators)
   (declare (ignore object-template))
   ;; TODO: get a proper robot camera frame here, and avoid magic numbers.
-  (let* ((camera-pose (cl-transforms:make-transform (cl-transforms:make-3d-vector 0 0 8) (cl-transforms:make-quaternion 0 0.72 0 0.72)));;(cl-transforms-stamped:lookup-transform (ensure-tf-listener) "/odom_combined" "/head_tilt_link" :timeout 2.0))
+  (let* ((camera-pose ;;(cl-transforms:make-transform (cl-transforms:make-3d-vector 0 0 8) (cl-transforms:make-quaternion 0 -0.72 0 0.72)))
+                      (cl-transforms-stamped:lookup-transform (ensure-tf-listener) "/odom_combined" "/head_tilt_link" :timeout 2.0))
          (camera-fwd (cl-transforms-stamped:make-3d-vector 1 0 0))
          (camera-fwd (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose) camera-fwd))
          (camera-up (cl-transforms-stamped:make-3d-vector 0 0 1))
