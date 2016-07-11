@@ -26,5 +26,6 @@
   <depend>cram_physics_utils</depend>
   <depend>cl_urdf</depend>
   <depend>cram_gazebo_utilities</depend>
+  <depend>gazebo_visibility_ros</depend>
 
 </package>

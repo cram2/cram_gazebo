@@ -1,0 +1,14 @@
+package gazebo_visibility_msgs.msgs;
+import "vector3d.proto";
+
+message VisibilityQuery
+{
+  required string                 objectName     = 1;
+  required gazebo.msgs.Vector3d   cameraPosition = 2;
+  required gazebo.msgs.Vector3d   cameraForward  = 3;
+  required gazebo.msgs.Vector3d   cameraUp       = 4;
+  required double                 focalDistance  = 5;
+  required double                 height         = 6;
+  required double                 width          = 7;
+  required double                 threshold      = 8;
+}
