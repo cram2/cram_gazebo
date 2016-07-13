@@ -171,7 +171,7 @@ public:
 
     queryGazeboVisibility_service = n.advertiseService<gazebo_visibility_ros::QueryGazeboVisibility::Request, gazebo_visibility_ros::QueryGazeboVisibility::Response>("/gazebo_visibility_ros/QueryGazeboVisibility",
                                                        boost::bind(doQueryGazeboVisibility, _world, _sdf, _1, _2));
-    ros::spin();
+
   }
 
 private:
