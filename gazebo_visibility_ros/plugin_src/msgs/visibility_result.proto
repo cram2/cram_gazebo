@@ -1,8 +1,0 @@
-package gazebo_visibility_msgs.msgs;
-import "visibility_query.proto";
-
-message VisibilityResult
-{
-  required int32                                       result = 1;
-  required gazebo_visibility_msgs.msgs.VisibilityQuery query  = 2;
-}
