@@ -36,7 +36,8 @@
    #:cut
    #:roslisp
    #:cram-plan-failures)
-  (:export #:gazebo-perception-process-module)
+  (:export #:gazebo-perception-process-module
+           ignore-object)
   (:shadowing-import-from #:cpl fail)
   (:import-from #:cram-process-modules
                 matching-process-module available-process-module)

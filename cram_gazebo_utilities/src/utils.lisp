@@ -40,7 +40,7 @@
                 'gazebo_msgs-srv:spawnmodel
                 :model_name name
                 :model_xml (file-string urdf-file)
-                :initial_pose (cl-transforms-stamped:to-msg pose)
+                :initial_pose (cl-transforms-stamped:to-msg (cl-tf:pose-stamped->pose pose))
                 :reference_frame (cl-transforms-stamped:frame-id pose)))
 
 (defun delete-gazebo-model (name)
