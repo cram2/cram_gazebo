@@ -48,8 +48,10 @@
     :components
     ((:file "package")
      (:file "designator" :depends-on ("package"))
+     (:file "utilities" :depends-on ("package"))
      (:file "gazebo-designator-data" :depends-on ("package"))
      (:file "process-module"
       :depends-on ("package"
                    "designator"
-                   "gazebo-designator-data"))))))
+                   "gazebo-designator-data"
+                   "utilities"))))))
