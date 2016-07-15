@@ -8,6 +8,7 @@
 
 #include <gazebo/physics/World.hh>
 #include <gazebo/physics/Model.hh>
+#include <gazebo/physics/Link.hh>
 #include <gazebo/physics/RayShape.hh>
 #include <gazebo/physics/MultiRayShape.hh>
 #include <gazebo/physics/PhysicsEngine.hh>
@@ -22,6 +23,8 @@ namespace gazebo
 
 void getBBoxGrid(math::Box const& bbox, int size, std::vector<math::Vector3> &points)
 {
+    ROS_INFO("Model bounding box %f %f %f %f %f %f", bbox.GetCenter().x, bbox.GetCenter().y, bbox.GetCenter().z,
+             bbox.GetXLength(), bbox.GetYLength(), bbox.GetZLength());
     points.clear();
     points.resize(size*size*size);
     math::Vector3 d = bbox.GetSize();
@@ -73,6 +76,55 @@ std::string trimSubEnts(std::string const& name)
     return name.substr(0, name.find(':'));
 }
 
+/*Need to implement this because gazebo can't compute the bounding box properly for a model that contains more
+than a single link*/
+void getBaseBox(physics::Base const* base, math::Vector3 &maxs, math::Vector3 &mins, bool &inited)
+{
+    if(base->HasType(physics::Base::LINK))
+    {
+        physics::Link const* link = dynamic_cast<physics::Link const*>(base);
+        math::Box box = link->GetBoundingBox();
+        if(!inited)
+        {
+            inited = true;
+            maxs = box.max;
+            mins = box.min;
+        }
+        else
+        {
+            math::Vector3 maxc = box.max;
+            math::Vector3 minc = box.min;
+            maxs.x = (maxc.x < maxs.x) ? maxs.x : minc.x;
+            maxs.y = (maxc.y < maxs.y) ? maxs.y : minc.y;
+            maxs.z = (maxc.z < maxs.z) ? maxs.z : minc.z;
+            mins.x = (minc.x > mins.x) ? mins.x : minc.x;
+            mins.y = (minc.y > mins.y) ? mins.y : minc.y;
+            mins.z = (minc.z > mins.z) ? mins.z : minc.z;
+        }
+    }
+    else
+    {
+        int maxK = base->GetChildCount();
+        for(int k = 0; k < maxK; k++)
+            getBaseBox(base->GetChild(k).get(), maxs, mins, inited);
+    }
+}
+
+math::Box getModelBox(physics::ModelPtr const& model)
+{
+    math::Vector3 mins, maxs;
+    bool inited = false;
+    if(model->HasType(physics::Base::LINK))
+        return model->GetBoundingBox();
+    int maxK = model->GetChildCount();
+    for(int k = 0; k < maxK; k++)
+        getBaseBox(model->GetChild(k).get(), maxs, mins, inited);
+    math::Box box;
+    box.max = maxs;
+    box.min = mins;
+    return box;
+}
+
 bool doQueryGazeboVisibility(physics::WorldPtr world, sdf::ElementPtr sdf, gazebo_visibility_ros::QueryGazeboVisibility::Request &request, gazebo_visibility_ros::QueryGazeboVisibility::Response &response)
 {
     ROS_INFO("Got QueryGazeboVisibility service request.");
@@ -83,10 +135,9 @@ bool doQueryGazeboVisibility(physics::WorldPtr world, sdf::ElementPtr sdf, gazeb
         response.visible = false;
         return true;
     }
-    ROS_INFO("Model name seems to make sense.");
+    ROS_INFO("Model name seems to make sense, and points to a model of type %d with %d children.", model->GetType(), model->GetChildCount());
 
-    math::Box bbox = model->GetBoundingBox();
-    //math::Pose pose = model->GetWorldPose();
+    math::Box bbox = getModelBox(model);
 
     gazebo::physics::PhysicsEnginePtr engine = world->GetPhysicsEngine();
     engine->InitForThread();
