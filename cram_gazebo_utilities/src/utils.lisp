@@ -24,6 +24,25 @@
 
 (in-package :cram-gazebo-utilities)
 
+(defclass spawned-object ()
+  ((id :reader id :initarg :id)
+   (description :reader description :initarg :description)))
+
+(defvar *spawned-objects* (make-hash-table :test 'equal))
+(defun clear-spawned-object-knowledge ()
+  (setf *spawned-objects* (make-hash-table :test 'equal)))
+(defun register-spawned-object (object-id description)
+  (setf (gethash object-id *spawned-objects*)
+        (make-instance 'spawned-object
+                       :id object-id :description description)))
+(defun unregister-spawned-object (object-id)
+  (remhash object-id *spawned-objects*))
+
+(defun spawned-object-description (object-id)
+  (let ((spawned-object (gethash object-id *spawned-objects*)))
+    (when spawned-object
+      (description spawned-object))))
+
 (defun set-model-state (model-name new-pose)
   (call-service "gazebo/set_model_state"
                 'gazebo_msgs-srv:setmodelstate
@@ -33,6 +52,7 @@
                                        :reference_frame (cl-transforms-stamped:frame-id new-pose))))
 
 (defun spawn-gazebo-model (name pose urdf-file)
+
   (call-service "gazebo/spawn_urdf_model"
                 'gazebo_msgs-srv:spawnmodel
                 :model_name name
