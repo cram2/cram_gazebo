@@ -24,17 +24,35 @@
 
 (in-package :cram-gazebo-utilities)
 
+
+;;;
+;;; Class definitions
+;;;
+
 (defclass spawned-object ()
   ((id :reader id :initarg :id)
    (description :reader description :initarg :description)))
 
+
+;;;
+;;; Global variables
+;;;
+
 (defvar *spawned-objects* (make-hash-table :test 'equal))
+
+
+;;;
+;;; Functions: Spawned object knowledge
+;;;
+
 (defun clear-spawned-object-knowledge ()
   (setf *spawned-objects* (make-hash-table :test 'equal)))
+
 (defun register-spawned-object (object-id description)
   (setf (gethash object-id *spawned-objects*)
         (make-instance 'spawned-object
                        :id object-id :description description)))
+
 (defun unregister-spawned-object (object-id)
   (remhash object-id *spawned-objects*))
 
@@ -43,27 +61,39 @@
     (when spawned-object
       (description spawned-object))))
 
+
+;;;
+;;; Functions: Model state, spawning, deleting
+;;;
+
 (defun set-model-state (model-name new-pose)
   (call-service "gazebo/set_model_state"
                 'gazebo_msgs-srv:setmodelstate
-                :model_state (make-msg "gazebo_msgs/ModelState"
-                                       :model_name model-name
-                                       :pose (cl-transforms-stamped:to-msg new-pose)
-                                       :reference_frame (cl-transforms-stamped:frame-id new-pose))))
+                :model_state
+                (make-msg "gazebo_msgs/ModelState"
+                          :model_name model-name
+                          :pose (cl-transforms-stamped:to-msg new-pose)
+                          :reference_frame (cl-transforms-stamped:frame-id new-pose))))
 
-(defun spawn-gazebo-model (name pose urdf-file)
-
+(defun spawn-gazebo-model (name pose urdf-file &key description)
   (call-service "gazebo/spawn_urdf_model"
                 'gazebo_msgs-srv:spawnmodel
                 :model_name name
                 :model_xml (file-string urdf-file)
-                :initial_pose (cl-transforms-stamped:to-msg (cl-tf:pose-stamped->pose pose))
-                :reference_frame (cl-transforms-stamped:frame-id pose)))
+                :initial_pose (cl-transforms-stamped:to-msg
+                               (cl-tf:pose-stamped->pose pose))
+                :reference_frame (cl-transforms-stamped:frame-id pose))
+  (register-spawned-object name description))
 
 (defun delete-gazebo-model (name)
   (call-service "gazebo/delete_model"
                 'gazebo_msgs-srv:deletemodel
-                :model_name name))
+                :model_name name)
+  (unregister-spawned-object name))
+
+;;;
+;;; Functions: Utility
+;;;
 
 (defun file-string (path)
   (with-open-file (s path)
@@ -75,6 +105,11 @@
 
 (defun gazebo-present ()
   (roslisp:wait-for-service "gazebo/spawn_urdf_model" 0.25))
+
+
+;;;
+;;; Functions: Joint manipulation
+;;;
 
 (defun set-joint-effort (joint effort &key (duration 2.0))
   (call-service "gazebo/apply_joint_effort"
