@@ -48,55 +48,6 @@
 (roslisp-utilities:register-ros-cleanup-function destroy-tf-listener)
 
 
-(defmethod objects-perceived (object-template object-designators)
-  (declare (ignore object-template))
-  ;; TODO: get a proper robot camera frame here, and avoid magic numbers.
-  (let* ((camera-pose ;;(cl-transforms:make-transform (cl-transforms:make-3d-vector 0 0 8) (cl-transforms:make-quaternion 0 -0.72 0 0.72)))
-                      (cl-transforms-stamped:lookup-transform (ensure-tf-listener) "/odom_combined" "/head_tilt_link" :timeout 2.0))
-         (camera-fwd (cl-transforms-stamped:make-3d-vector 1 0 0))
-         (camera-fwd (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose) camera-fwd))
-         (camera-up (cl-transforms-stamped:make-3d-vector 0 0 1))
-         (camera-up (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose) camera-up))
-         (camera-pose (cl-transforms-stamped:translation camera-pose))
-         (camera-pose (roslisp:make-message "geometry_msgs/Point"
-                                            :x (cl-transforms-stamped:x camera-pose)
-                                            :y (cl-transforms-stamped:y camera-pose)
-                                            :z (cl-transforms-stamped:z camera-pose)))
-         (camera-fwd (roslisp:make-message "geometry_msgs/Point"
-                                           :x (cl-transforms-stamped:x camera-fwd)
-                                           :y (cl-transforms-stamped:y camera-fwd)
-                                           :z (cl-transforms-stamped:z camera-fwd)))
-         (camera-up (roslisp:make-message "geometry_msgs/Point"
-                                          :x (cl-transforms-stamped:x camera-up)
-                                          :y (cl-transforms-stamped:y camera-up)
-                                          :z (cl-transforms-stamped:z camera-up)))
-         (focal-distance 1)
-         (width 1)
-         (height 1)
-         (max-distance 12)
-         (threshold 0.2))
-    (remove-if #'null
-               (mapcar (lambda (obj-desig)
-                         (let* ((name (desig-prop-value obj-desig :name)))
-                           (roslisp:with-fields (visible)
-                                                (roslisp:call-service "/gazebo_visibility_ros/QueryGazeboVisibility" "gazebo_visibility_ros/QueryGazeboVisibility"
-                                                                      :name name
-                                                                      :camera_pose camera-pose
-                                                                      :camera_fwd camera-fwd
-                                                                      :camera_up camera-up
-                                                                      :focal_distance focal-distance
-                                                                      :width width
-                                                                      :height height
-                                                                      :max_distance max-distance
-                                                                      :threshold threshold)
-                             (format t "    ~a~%" visible)
-                             (if (equal visible 0)
-                               nil
-                               obj-desig))))
-                       object-designators))))
-
-
-(defgeneric filter-perceived-objects (template-designator perceived-objects))
 (defgeneric filter-perceived-objects (object-template perceived-objects)
   (:documentation "Filters all perceived objects according to all registered filters. This method is mainly used by perception process modules that want to validate and filter their results. Also, this function triggers the `object-perceived-event' plan event, updating the belief state.")
   (:method (object-template perceived-objects)
@@ -164,8 +115,47 @@ purposes."
         (t model-names)))
 
 (defun filter-models-by-field-of-view (model-names)
-  ;; TODO: Filter based on field of view (Mihai's plugin)
-  model-names)
+  (let* ((camera-pose (cl-transforms-stamped:lookup-transform
+                       (ensure-tf-listener) "odom_combined" "head_tilt_link"
+                       :timeout 2.0))
+         (camera-fwd (cl-transforms-stamped:make-3d-vector 1 0 0))
+         (camera-fwd (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose) camera-fwd))
+         (camera-up (cl-transforms-stamped:make-3d-vector 0 0 1))
+         (camera-up (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose) camera-up))
+         (camera-pose (cl-transforms-stamped:translation camera-pose))
+         (camera-pose (roslisp:make-message "geometry_msgs/Point"
+                                            :x (cl-transforms-stamped:x camera-pose)
+                                            :y (cl-transforms-stamped:y camera-pose)
+                                            :z (cl-transforms-stamped:z camera-pose)))
+         (camera-fwd (roslisp:make-message "geometry_msgs/Point"
+                                           :x (cl-transforms-stamped:x camera-fwd)
+                                           :y (cl-transforms-stamped:y camera-fwd)
+                                           :z (cl-transforms-stamped:z camera-fwd)))
+         (camera-up (roslisp:make-message "geometry_msgs/Point"
+                                          :x (cl-transforms-stamped:x camera-up)
+                                          :y (cl-transforms-stamped:y camera-up)
+                                          :z (cl-transforms-stamped:z camera-up)))
+         (focal-distance 1)
+         (width 1)
+         (height 1)
+         (max-distance 12)
+         (threshold 0.2))
+    (cpl:mapcar-clean (lambda (model-name)
+                        (roslisp:with-fields (visible)
+                            (roslisp:call-service "/gazebo_visibility_ros/QueryGazeboVisibility"
+                                                  "gazebo_visibility_ros/QueryGazeboVisibility"
+                                                  :name model-name
+                                                  :camera_pose camera-pose
+                                                  :camera_fwd camera-fwd
+                                                  :camera_up camera-up
+                                                  :focal_distance focal-distance
+                                                  :width width
+                                                  :height height
+                                                  :max_distance max-distance
+                                                  :threshold threshold)
+                         (unless (eql visible 0)
+                           model-name)))
+                      model-names)))
 
 (defun find-objects (&key object-name)
   "Finds objects based on either their name `object-name' or their
@@ -178,8 +168,13 @@ given, all known objects from the knowledge base are returned."
          (filtered-model-names (filter-models-by-name
                                 filtered-model-names
                                 :template-name object-name))
-         (filtered-model-names (filter-models-by-field-of-view
-                                filtered-model-names)))
+         ;; TODO: Doesn't work at the moment (Gazebo segfaults every
+         ;; now and then when active; this isn't blocking development
+         ;; right now, but should be fixed soonish to better
+         ;; incorporate it).
+         ;(filtered-model-names (filter-models-by-field-of-view
+         ;                       filtered-model-names))
+         )
     (mapcar (lambda (model-name)
               (let ((pose (cram-gazebo-utilities:get-model-pose model-name)))
                 (make-instance 'gazebo-designator-shape-data
