@@ -48,55 +48,6 @@
 (roslisp-utilities:register-ros-cleanup-function destroy-tf-listener)
 
 
-(defmethod objects-perceived (object-template object-designators)
-  (declare (ignore object-template))
-  ;; TODO: get a proper robot camera frame here, and avoid magic numbers.
-  (let* ((camera-pose ;;(cl-transforms:make-transform (cl-transforms:make-3d-vector 0 0 8) (cl-transforms:make-quaternion 0 -0.72 0 0.72)))
-                      (cl-transforms-stamped:lookup-transform (ensure-tf-listener) "/odom_combined" "/head_tilt_link" :timeout 2.0))
-         (camera-fwd (cl-transforms-stamped:make-3d-vector 1 0 0))
-         (camera-fwd (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose) camera-fwd))
-         (camera-up (cl-transforms-stamped:make-3d-vector 0 0 1))
-         (camera-up (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose) camera-up))
-         (camera-pose (cl-transforms-stamped:translation camera-pose))
-         (camera-pose (roslisp:make-message "geometry_msgs/Point"
-                                            :x (cl-transforms-stamped:x camera-pose)
-                                            :y (cl-transforms-stamped:y camera-pose)
-                                            :z (cl-transforms-stamped:z camera-pose)))
-         (camera-fwd (roslisp:make-message "geometry_msgs/Point"
-                                           :x (cl-transforms-stamped:x camera-fwd)
-                                           :y (cl-transforms-stamped:y camera-fwd)
-                                           :z (cl-transforms-stamped:z camera-fwd)))
-         (camera-up (roslisp:make-message "geometry_msgs/Point"
-                                          :x (cl-transforms-stamped:x camera-up)
-                                          :y (cl-transforms-stamped:y camera-up)
-                                          :z (cl-transforms-stamped:z camera-up)))
-         (focal-distance 1)
-         (width 1)
-         (height 1)
-         (max-distance 12)
-         (threshold 0.2))
-    (remove-if #'null
-               (mapcar (lambda (obj-desig)
-                         (let* ((name (desig-prop-value obj-desig :name)))
-                           (roslisp:with-fields (visible)
-                                                (roslisp:call-service "/gazebo_visibility_ros/QueryGazeboVisibility" "gazebo_visibility_ros/QueryGazeboVisibility"
-                                                                      :name name
-                                                                      :camera_pose camera-pose
-                                                                      :camera_fwd camera-fwd
-                                                                      :camera_up camera-up
-                                                                      :focal_distance focal-distance
-                                                                      :width width
-                                                                      :height height
-                                                                      :max_distance max-distance
-                                                                      :threshold threshold)
-                             (format t "    ~a~%" visible)
-                             (if (equal visible 0)
-                               nil
-                               obj-desig))))
-                       object-designators))))
-
-
-(defgeneric filter-perceived-objects (template-designator perceived-objects))
 (defgeneric filter-perceived-objects (object-template perceived-objects)
   (:documentation "Filters all perceived objects according to all registered filters. This method is mainly used by perception process modules that want to validate and filter their results. Also, this function triggers the `object-perceived-event' plan event, updating the belief state.")
   (:method (object-template perceived-objects)
@@ -148,87 +99,120 @@ purposes."
                                     (:type handle))))))
           handles))
 
-(defun find-object (&key object-name object-type)
+(defun filter-models-by-ignored-objects (model-names)
+  (cpl:mapcar-clean (lambda (model-name)
+                      (unless (find model-name *ignored-objects* :test #'string=)
+                        model-name))
+                    model-names))
+
+(defun filter-models-by-name (model-names &key template-name)
+  "If defined, `template-name' is the only valid model name returned (if present in `model-names'). Otherwise, `model-names' is returned."
+  (cond (template-name
+         (cpl:mapcar-clean (lambda (model-name)
+                             (when (string= template-name model-name)
+                               model-name))
+                           model-names))
+        (t model-names)))
+
+(defun filter-models-by-field-of-view (model-names)
+  (let* ((camera-pose (cl-transforms-stamped:lookup-transform
+                       (ensure-tf-listener) "odom_combined" "head_tilt_link"
+                       :timeout 2.0))
+         (camera-fwd (cl-transforms-stamped:make-3d-vector 1 0 0))
+         (camera-fwd (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose) camera-fwd))
+         (camera-up (cl-transforms-stamped:make-3d-vector 0 0 1))
+         (camera-up (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose) camera-up))
+         (camera-pose (cl-transforms-stamped:translation camera-pose))
+         (camera-pose (roslisp:make-message "geometry_msgs/Point"
+                                            :x (cl-transforms-stamped:x camera-pose)
+                                            :y (cl-transforms-stamped:y camera-pose)
+                                            :z (cl-transforms-stamped:z camera-pose)))
+         (camera-fwd (roslisp:make-message "geometry_msgs/Point"
+                                           :x (cl-transforms-stamped:x camera-fwd)
+                                           :y (cl-transforms-stamped:y camera-fwd)
+                                           :z (cl-transforms-stamped:z camera-fwd)))
+         (camera-up (roslisp:make-message "geometry_msgs/Point"
+                                          :x (cl-transforms-stamped:x camera-up)
+                                          :y (cl-transforms-stamped:y camera-up)
+                                          :z (cl-transforms-stamped:z camera-up)))
+         (focal-distance 1)
+         (width 1)
+         (height 1)
+         (max-distance 12)
+         (threshold 0.2))
+    (cpl:mapcar-clean (lambda (model-name)
+                        (roslisp:with-fields (visible)
+                            (roslisp:call-service "/gazebo_visibility_ros/QueryGazeboVisibility"
+                                                  "gazebo_visibility_ros/QueryGazeboVisibility"
+                                                  :name model-name
+                                                  :camera_pose camera-pose
+                                                  :camera_fwd camera-fwd
+                                                  :camera_up camera-up
+                                                  :focal_distance focal-distance
+                                                  :width width
+                                                  :height height
+                                                  :max_distance max-distance
+                                                  :threshold threshold)
+                         (unless (eql visible 0)
+                           model-name)))
+                      model-names)))
+
+(defun find-objects (&key object-name)
   "Finds objects based on either their name `object-name' or their
 type `object-type', depending what is given. An invalid combination of
 both parameters will result in an empty list. When no parameters are
 given, all known objects from the knowledge base are returned."
-  (cond (object-name
-         (let* ((obj-symbol object-name)
-                (model-pose (cram-gazebo-utilities:get-model-pose
-                             object-name)))
-           (when model-pose
-             (list ( make-instance 'gazebo-designator-shape-data
-                                  :object-identifier obj-symbol
-                                  :pose model-pose)))))
-        (object-type
-         (loop for model-data in (cram-gazebo-utilities:get-models)
-               as name = (car model-data)
-               when (and (>= (length name) (length object-type))
-                         (string= object-type (subseq name 0 (length object-type))))
-                 collect
-                 (make-instance 'gazebo-designator-shape-data
-                                :object-identifier name
-                                :pose (cdr model-data))))
-        (t
-         (mapcar (lambda (model-data)
-                   (destructuring-bind (model-name . model-pose)
-                       model-data
-                     (make-instance 'gazebo-designator-shape-data
-                                    :object-identifier model-name
-                                    :pose model-pose)))
-                 (cram-gazebo-utilities:get-models)))))
-
-(defun perceived-object->designator (designator perceived-object)
-  (make-effective-designator
-   designator
-   :new-properties (make-new-desig-description
-                    designator perceived-object)
-   :data-object perceived-object))
+  (let* ((model-names (mapcar #'car (cram-gazebo-utilities:get-models)))
+         (filtered-model-names (filter-models-by-ignored-objects
+                                model-names))
+         (filtered-model-names (filter-models-by-name
+                                filtered-model-names
+                                :template-name object-name))
+         ;; TODO: Doesn't work at the moment (Gazebo segfaults every
+         ;; now and then when active; this isn't blocking development
+         ;; right now, but should be fixed soonish to better
+         ;; incorporate it).
+         ;(filtered-model-names (filter-models-by-field-of-view
+         ;                       filtered-model-names))
+         )
+    (mapcar (lambda (model-name)
+              (let ((pose (cram-gazebo-utilities:get-model-pose model-name)))
+                (make-instance 'gazebo-designator-shape-data
+                               :object-identifier model-name
+                               :pose pose)))
+            filtered-model-names)))
 
 (defun find-with-designator (designator)
-  (with-desig-props (desig-props::name desig-props::type) designator
-    (let* ((at (desig-prop-value designator :at))
-           (pose-in-at (desig-prop-value at :pose))
-           (filter-function
-             (cond ((and at (not pose-in-at))
-                    (lambda (object-check)
-                      (let* ((sample (reference at))
-                             ;; This is a 2d comparison; put the z
-                             ;; coordinate from the sample into the
-                             ;; pose before validating. Otherwise,
-                             ;; gravity will mess up everything.
-                             (pose (desig-prop-value
-                                    (desig-prop-value
-                                     object-check
-                                     :at)
-                                    :pose))
-                             (pose-elevated
-                               (cl-transforms:copy-pose
-                                pose
-                                :origin (cl-transforms:make-3d-vector (cl-transforms:x (cl-transforms:origin pose))
-                                                           (cl-transforms:y (cl-transforms:origin pose))
-                                                           (cl-transforms:z (cl-transforms:origin sample))))))
-                        (not (validate-location-designator-solution at pose-elevated)))))
-                   (t #'not))))
-      (remove-if
-       filter-function
-       (mapcar (lambda (perceived-object)
-                 (perceived-object->designator
-                  designator perceived-object))
-               (find-object :object-name desig-props::name
-                            :object-type desig-props::type))))))
+  (let* ((template-name (desig-prop-value designator :name))
+         (template-type (desig-prop-value designator :type))
+         (models (find-objects :object-name template-name)))
+    (cpl:mapcar-clean (lambda (model)
+                        (with-slots ((model-name desig::object-identifier) (pose desig::pose)) model
+                          (let* ((pose (cram-gazebo-utilities:get-model-pose model-name))
+                                 (location (make-designator :location `((:at ,pose))))
+                                 (description (cram-gazebo-utilities:spawned-object-description model-name))
+                                 (description-type (cadr (find :type description :test (lambda (x y)
+                                                                                         (eql x (car y))))))
+                                 (model-data (make-instance 'gazebo-designator-shape-data
+                                                            :object-identifier model-name
+                                                            :pose pose)))
+                            (when (or (and template-type (equal template-type description-type))
+                                      (not template-type))
+                              (make-effective-designator
+                               designator
+                               :new-properties (append `((:name ,model-name)
+                                                         (:at ,location))
+                                                       description)
+                               :data-object model-data)))))
+                      models)))
 
 (def-process-module gazebo-perception-process-module (input)
   (assert (typep input 'action-designator))
   (let* ((object-designator (desig-prop-value input :obj))
-	 (log-id (first (cram-language::on-prepare-perception-request object-designator))))
+         (log-id (first (cram-language::on-prepare-perception-request object-designator))))
     (ros-info (gazebo perception-process-module) "Searching for object ~a" object-designator)
-    (let ((results (cpl:mapcar-clean
-                    (lambda (designator)
-                      (let ((name (desig-prop-value designator :name)))
-                        (when (and name (not (is-object-ignored name)))
-                          designator)))
-                    (find-with-designator object-designator))))
+    (let ((results (find-with-designator object-designator)))
       (cram-language::on-finish-perception-request log-id results)
-      (if (not results) (cpl:fail 'cram-plan-failures:object-not-found :object-desig object-designator) results))))
+      (if (not results)
+          (cpl:fail 'cram-plan-failures:object-not-found :object-desig object-designator)
+          results))))
