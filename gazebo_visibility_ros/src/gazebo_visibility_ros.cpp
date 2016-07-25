@@ -142,7 +142,8 @@ bool doQueryGazeboVisibility(physics::WorldPtr world, sdf::ElementPtr sdf, gazeb
     gazebo::physics::PhysicsEnginePtr engine = world->GetPhysicsEngine();
     engine->InitForThread();
 
-    gazebo::physics::RayShapePtr ray = boost::dynamic_pointer_cast<gazebo::physics::RayShape>(engine->CreateShape("ray", gazebo::physics::CollisionPtr()));
+    gazebo::physics::ShapePtr ray = engine->CreateShape("ray", gazebo::physics::CollisionPtr());
+
     math::Vector3 start, cameraFwd, cameraSide, cameraUp;
     start.x = request.camera_pose.x;
     start.y = request.camera_pose.y;
@@ -181,10 +182,10 @@ bool doQueryGazeboVisibility(physics::WorldPtr world, sdf::ElementPtr sdf, gazeb
         math::Vector3 end = getEndPoint(start, points[k], request.max_distance);
         if(inImage(start, end, cameraFwd, cameraSide, cameraUp, upAngle, sideAngle))
         {
-            ray->SetPoints(start, end);
+            boost::dynamic_pointer_cast<gazebo::physics::RayShape>(ray)->SetPoints(start, end);
             double dist;
             std::string entityName;
-            ray->GetIntersection(dist, entityName);
+            boost::dynamic_pointer_cast<gazebo::physics::RayShape>(ray)->GetIntersection(dist, entityName);
             if(request.name == trimSubEnts(entityName))
                 okPoints++;
         }
@@ -201,7 +202,7 @@ bool doQueryGazeboVisibility(physics::WorldPtr world, sdf::ElementPtr sdf, gazeb
 class GazeboVisibilityROS : public WorldPlugin
 {
 public:
-  GazeboVisibilityROS() : WorldPlugin()
+  GazeboVisibilityROS() : WorldPlugin(), n("~")
   {
   }
 
