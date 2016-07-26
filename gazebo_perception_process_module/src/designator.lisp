@@ -29,7 +29,7 @@
 (in-package :gazebo-perception-pm)
 
 (defun designator-model-pose (name)
-  (let ((found-objects (find-object :object-name name)))
+  (let ((found-objects (find-objects :object-name name)))
     (when found-objects
       (object-pose (first found-objects)))))
 
