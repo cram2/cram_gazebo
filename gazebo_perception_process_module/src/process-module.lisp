@@ -189,7 +189,7 @@ given, all known objects from the knowledge base are returned."
     (cpl:mapcar-clean (lambda (model)
                         (with-slots ((model-name desig::object-identifier) (pose desig::pose)) model
                           (let* ((pose (cram-gazebo-utilities:get-model-pose model-name))
-                                 (location (make-designator :location `((:at ,pose))))
+                                 (location (make-designator :location `((:pose ,pose))))
                                  (description (cram-gazebo-utilities:spawned-object-description model-name))
                                  (description-type (cadr (find :type description :test (lambda (x y)
                                                                                          (eql x (car y))))))
