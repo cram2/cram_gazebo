@@ -61,6 +61,15 @@
     (when spawned-object
       (description spawned-object))))
 
+(defun spawned-objects ()
+  (loop for name being the hash-keys of *spawned-objects*
+        collect name))
+
+(defun delete-spawned-objects ()
+  (dolist (object-id (spawned-objects))
+    (delete-gazebo-model object-id))
+  (clear-spawned-object-knowledge))
+
 
 ;;;
 ;;; Functions: Model state, spawning, deleting
@@ -90,6 +99,14 @@
                 'gazebo_msgs-srv:deletemodel
                 :model_name name)
   (unregister-spawned-object name))
+
+(defun model-present (name)
+  (with-fields (success)
+      (call-service "gazebo/get_model_state"
+                    'gazebo_msgs-srv:getmodelstate
+                    :model_name name
+                    :relative_entity_name "")
+    success))
 
 ;;;
 ;;; Functions: Utility
