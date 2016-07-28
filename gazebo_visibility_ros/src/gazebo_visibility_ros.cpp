@@ -139,11 +139,6 @@ bool doQueryGazeboVisibility(physics::WorldPtr world, sdf::ElementPtr sdf, gazeb
 
     math::Box bbox = getModelBox(model);
 
-    gazebo::physics::PhysicsEnginePtr engine = world->GetPhysicsEngine();
-    engine->InitForThread();
-
-    gazebo::physics::ShapePtr ray = engine->CreateShape("ray", gazebo::physics::CollisionPtr());
-
     math::Vector3 start, cameraFwd, cameraSide, cameraUp;
     start.x = request.camera_pose.x;
     start.y = request.camera_pose.y;
@@ -177,19 +172,39 @@ bool doQueryGazeboVisibility(physics::WorldPtr world, sdf::ElementPtr sdf, gazeb
 
     int maxK = points.size();
     int okPoints = 0;
-    for(int k = 0; k < maxK; k++)
+
+    if(5 <= GAZEBO_MAJOR_VERSION)
     {
-        math::Vector3 end = getEndPoint(start, points[k], request.max_distance);
-        if(inImage(start, end, cameraFwd, cameraSide, cameraUp, upAngle, sideAngle))
+        gazebo::physics::PhysicsEnginePtr engine = world->GetPhysicsEngine();
+        engine->InitForThread();
+
+        gazebo::physics::ShapePtr ray = engine->CreateShape("ray", gazebo::physics::CollisionPtr());
+
+        for(int k = 0; k < maxK; k++)
         {
-            boost::dynamic_pointer_cast<gazebo::physics::RayShape>(ray)->SetPoints(start, end);
-            double dist;
-            std::string entityName;
-            boost::dynamic_pointer_cast<gazebo::physics::RayShape>(ray)->GetIntersection(dist, entityName);
-            if(request.name == trimSubEnts(entityName))
+            math::Vector3 end = getEndPoint(start, points[k], request.max_distance);
+            if(inImage(start, end, cameraFwd, cameraSide, cameraUp, upAngle, sideAngle))
+            {
+                boost::dynamic_pointer_cast<gazebo::physics::RayShape>(ray)->SetPoints(start, end);
+                double dist;
+                std::string entityName;
+                boost::dynamic_pointer_cast<gazebo::physics::RayShape>(ray)->GetIntersection(dist, entityName);
+                if(request.name == trimSubEnts(entityName))
+                    okPoints++;
+            }
+        }
+    }
+    else
+    {
+        for(int k = 0; k < maxK; k++)
+        {
+            /*A bit of a hack to get something running on older gazebo versions, even if a little.*/
+            math::Vector3 end = getEndPoint(start, points[k], request.max_distance);
+            if(inImage(start, end, cameraFwd, cameraSide, cameraUp, upAngle, sideAngle))
                 okPoints++;
         }
     }
+
     ROS_INFO("Done with raytrace.");
 
     response.visible = false;
