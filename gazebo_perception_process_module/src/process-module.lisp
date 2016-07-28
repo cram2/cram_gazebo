@@ -168,13 +168,12 @@ given, all known objects from the knowledge base are returned."
          (filtered-model-names (filter-models-by-name
                                 filtered-model-names
                                 :template-name object-name))
-         ;; TODO: Doesn't work at the moment (Gazebo segfaults every
-         ;; now and then when active; this isn't blocking development
-         ;; right now, but should be fixed soonish to better
-         ;; incorporate it).
-         ;(filtered-model-names (filter-models-by-field-of-view
-         ;                       filtered-model-names))
-         )
+         ;; TODO: Fix this external component; it returns all spawned
+         ;; objects instead of the currently visible ones. This is
+         ;; intended behavior and is related to problems in Gazebo
+         ;; 2.2.3 w.r.t. raytracing code.
+         (filtered-model-names (filter-models-by-field-of-view
+                                filtered-model-names)))
     (mapcar (lambda (model-name)
               (let ((pose (cram-gazebo-utilities:get-model-pose model-name)))
                 (make-instance 'gazebo-designator-shape-data
