@@ -175,8 +175,6 @@ given, all known objects from the knowledge base are returned."
          ;(filtered-model-names (filter-models-by-field-of-view
          ;                       filtered-model-names))
          )
-         (filtered-model-names (filter-models-by-field-of-view
-                                filtered-model-names)))
     (mapcar (lambda (model-name)
               (let ((pose (cram-gazebo-utilities:get-model-pose model-name)))
                 (make-instance 'gazebo-designator-shape-data
@@ -208,12 +206,58 @@ given, all known objects from the knowledge base are returned."
                                :data-object model-data)))))
                       models)))
 
+(defun update-belief-state (objects)
+  (let* ((bullet-objects
+           (cpl:mapcar-clean
+            #'identity
+            (cut:force-ll
+             (cut:lazy-mapcar
+              (lambda (bdgs)
+                (cut:with-vars-bound (?o) bdgs
+                  (when (stringp ?o) ?o)))
+              (cram-prolog:prolog
+               `(and (btr:bullet-world ?w)
+                     (btr:object ?w ?o)
+                     (not (btr::robot ?o))))))))
+         (new-objects
+           (cpl:mapcar-clean (lambda (object)
+                               (let* ((name (desig-prop-value object :name)))
+                                 (unless (find name bullet-objects :test #'string=)
+                                   object)))
+                             objects))
+         (present-objects
+           (cpl:mapcar-clean (lambda (object)
+                               (let ((name (desig-prop-value object :name)))
+                                 (when (find name bullet-objects :test #'string=)
+                                   object)))
+                             objects)))
+    (loop for object in present-objects do
+      (let* ((at (desig-prop-value object :at))
+             (pose (desig-prop-value at :pose))
+             (name (desig-prop-value object :name)))
+        (cram-prolog:prolog `(and (btr:bullet-world ?w)
+                                  (btr:assert (btr:object ?w :box ,name ,pose))))))
+    (loop for object in new-objects do
+      (let* ((at (desig-prop-value object :at))
+             (pose (desig-prop-value at :pose))
+             (dimensions (desig-prop-value object :dimensions))
+             (name (desig-prop-value object :name))
+             (dimensions-list `(,(tf:x dimensions)
+                                ,(tf:y dimensions)
+                                ,(tf:z dimensions))))
+        (cram-prolog:prolog `(and (btr:bullet-world ?w)
+                                  (btr:retract (btr:object ?w ,name))
+                                  (btr:assert (btr:object ?w :box ,name ,pose
+                                                          :mass 0.1
+                                                          :size ,dimensions-list))))))))
+
 (def-process-module gazebo-perception-process-module (input)
   (assert (typep input 'action-designator))
   (let* ((object-designator (desig-prop-value input :obj))
          (log-id (first (cram-language::on-prepare-perception-request object-designator))))
     (ros-info (gazebo perception-process-module) "Searching for object ~a" object-designator)
     (let ((results (find-with-designator object-designator)))
+      (update-belief-state results)
       (cram-language::on-finish-perception-request log-id results)
       (if (not results)
           (cpl:fail 'cram-plan-failures:object-not-found :object-desig object-designator)
