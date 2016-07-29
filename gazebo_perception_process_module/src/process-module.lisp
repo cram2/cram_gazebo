@@ -172,6 +172,9 @@ given, all known objects from the knowledge base are returned."
          ;; objects instead of the currently visible ones. This is
          ;; intended behavior and is related to problems in Gazebo
          ;; 2.2.3 w.r.t. raytracing code.
+         ;(filtered-model-names (filter-models-by-field-of-view
+         ;                       filtered-model-names))
+         )
          (filtered-model-names (filter-models-by-field-of-view
                                 filtered-model-names)))
     (mapcar (lambda (model-name)
