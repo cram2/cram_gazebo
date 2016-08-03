@@ -45,4 +45,5 @@
            get-models gazebo-present
            spawned-object-description
            spawned-objects
-           delete-spawned-objects))
+           delete-spawned-objects
+           model-present))
