@@ -43,4 +43,7 @@
            get-model-pose set-model-state
            spawn-gazebo-model object-in-world?
            get-models gazebo-present
-           spawned-object-description))
+           spawned-object-description
+           spawned-objects
+           delete-spawned-objects
+           model-present))

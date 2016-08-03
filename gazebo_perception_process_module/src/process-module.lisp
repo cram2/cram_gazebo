@@ -168,10 +168,10 @@ given, all known objects from the knowledge base are returned."
          (filtered-model-names (filter-models-by-name
                                 filtered-model-names
                                 :template-name object-name))
-         ;; TODO: Doesn't work at the moment (Gazebo segfaults every
-         ;; now and then when active; this isn't blocking development
-         ;; right now, but should be fixed soonish to better
-         ;; incorporate it).
+         ;; TODO: Fix this external component; it returns all spawned
+         ;; objects instead of the currently visible ones. This is
+         ;; intended behavior and is related to problems in Gazebo
+         ;; 2.2.3 w.r.t. raytracing code.
          ;(filtered-model-names (filter-models-by-field-of-view
          ;                       filtered-model-names))
          )
@@ -206,12 +206,68 @@ given, all known objects from the knowledge base are returned."
                                :data-object model-data)))))
                       models)))
 
+(defun get-bullet-objects ()
+  (cpl:mapcar-clean
+   #'identity
+   (cut:force-ll
+    (cut:lazy-mapcar
+     (lambda (bdgs)
+       (cut:with-vars-bound (?o) bdgs
+         (when (stringp ?o) ?o)))
+     (cram-prolog:prolog
+      `(and (btr:bullet-world ?w)
+            (btr:object ?w ?o)
+            (not (btr::robot ?o))))))))
+
+(defun update-bullet-object (name pose)
+  (cram-prolog:prolog
+   `(and (btr:bullet-world ?w)
+         (btr:assert (btr:object ?w :box ,name ,pose)))))
+
+(defun add-bullet-object (name pose dimensions)
+  (cram-prolog:prolog
+   `(and (btr:bullet-world ?w)
+         ;;(btr:retract (btr:object ?w ,name))
+         (btr:assert (btr:object ?w :box ,name ,pose
+                                 :mass 0.1
+                                 :size ,dimensions)))))
+
+(defun update-belief-state (objects)
+  (let* ((bullet-objects (get-bullet-objects))
+         (new-objects
+           (cpl:mapcar-clean (lambda (object)
+                               (let* ((name (desig-prop-value object :name)))
+                                 (unless (find name bullet-objects :test #'string=)
+                                   object)))
+                             objects))
+         (present-objects
+           (cpl:mapcar-clean (lambda (object)
+                               (let ((name (desig-prop-value object :name)))
+                                 (when (find name bullet-objects :test #'string=)
+                                   object)))
+                             objects)))
+    (loop for object in present-objects do
+      (let* ((at (desig-prop-value object :at))
+             (pose (desig-prop-value at :pose))
+             (name (desig-prop-value object :name)))
+        (update-bullet-object name pose)))
+    (loop for object in new-objects do
+      (let* ((at (desig-prop-value object :at))
+             (pose (desig-prop-value at :pose))
+             (dimensions (desig-prop-value object :dimensions))
+             (name (desig-prop-value object :name))
+             (dimensions-list `(,(tf:x dimensions)
+                                ,(tf:y dimensions)
+                                ,(tf:z dimensions))))
+        (add-bullet-object name pose dimensions-list)))))
+
 (def-process-module gazebo-perception-process-module (input)
   (assert (typep input 'action-designator))
   (let* ((object-designator (desig-prop-value input :obj))
          (log-id (first (cram-language::on-prepare-perception-request object-designator))))
     (ros-info (gazebo perception-process-module) "Searching for object ~a" object-designator)
     (let ((results (find-with-designator object-designator)))
+      (update-belief-state results)
       (cram-language::on-finish-perception-request log-id results)
       (if (not results)
           (cpl:fail 'cram-plan-failures:object-not-found :object-desig object-designator)
