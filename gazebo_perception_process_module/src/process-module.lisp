@@ -206,19 +206,34 @@ given, all known objects from the knowledge base are returned."
                                :data-object model-data)))))
                       models)))
 
+(defun get-bullet-objects ()
+  (cpl:mapcar-clean
+   #'identity
+   (cut:force-ll
+    (cut:lazy-mapcar
+     (lambda (bdgs)
+       (cut:with-vars-bound (?o) bdgs
+         (when (stringp ?o) ?o)))
+     (cram-prolog:prolog
+      `(and (btr:bullet-world ?w)
+            (btr:object ?w ?o)
+            (not (btr::robot ?o))))))))
+
+(defun update-bullet-object (name pose)
+  (cram-prolog:prolog
+   `(and (btr:bullet-world ?w)
+         (btr:assert (btr:object ?w :box ,name ,pose)))))
+
+(defun add-bullet-object (name pose dimensions)
+  (cram-prolog:prolog
+   `(and (btr:bullet-world ?w)
+         ;;(btr:retract (btr:object ?w ,name))
+         (btr:assert (btr:object ?w :box ,name ,pose
+                                 :mass 0.1
+                                 :size ,dimensions)))))
+
 (defun update-belief-state (objects)
-  (let* ((bullet-objects
-           (cpl:mapcar-clean
-            #'identity
-            (cut:force-ll
-             (cut:lazy-mapcar
-              (lambda (bdgs)
-                (cut:with-vars-bound (?o) bdgs
-                  (when (stringp ?o) ?o)))
-              (cram-prolog:prolog
-               `(and (btr:bullet-world ?w)
-                     (btr:object ?w ?o)
-                     (not (btr::robot ?o))))))))
+  (let* ((bullet-objects (get-bullet-objects))
          (new-objects
            (cpl:mapcar-clean (lambda (object)
                                (let* ((name (desig-prop-value object :name)))
@@ -235,8 +250,7 @@ given, all known objects from the knowledge base are returned."
       (let* ((at (desig-prop-value object :at))
              (pose (desig-prop-value at :pose))
              (name (desig-prop-value object :name)))
-        (cram-prolog:prolog `(and (btr:bullet-world ?w)
-                                  (btr:assert (btr:object ?w :box ,name ,pose))))))
+        (update-bullet-object name pose)))
     (loop for object in new-objects do
       (let* ((at (desig-prop-value object :at))
              (pose (desig-prop-value at :pose))
@@ -245,11 +259,7 @@ given, all known objects from the knowledge base are returned."
              (dimensions-list `(,(tf:x dimensions)
                                 ,(tf:y dimensions)
                                 ,(tf:z dimensions))))
-        (cram-prolog:prolog `(and (btr:bullet-world ?w)
-                                  (btr:retract (btr:object ?w ,name))
-                                  (btr:assert (btr:object ?w :box ,name ,pose
-                                                          :mass 0.1
-                                                          :size ,dimensions-list))))))))
+        (add-bullet-object name pose dimensions-list)))))
 
 (def-process-module gazebo-perception-process-module (input)
   (assert (typep input 'action-designator))
