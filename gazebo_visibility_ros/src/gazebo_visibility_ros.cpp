@@ -16,10 +16,29 @@
 
 #include <gazebo_visibility_ros/QueryGazeboVisibility.h>
 
+#include <pthread.h>
+
 using namespace std;
 
 namespace gazebo
 {
+
+typedef struct
+{
+    physics::WorldPtr world;
+    sdf::ElementPtr sdf;
+    bool haveRequest;
+    bool pleaseFinish;
+    bool haveResult;
+    gazebo_visibility_ros::QueryGazeboVisibilityRequest request;
+    gazebo_visibility_ros::QueryGazeboVisibilityResponse response;
+    pthread_mutex_t *mutex;
+    gazebo::physics::PhysicsEnginePtr engine;
+    gazebo::physics::ShapePtr ray;
+}tContext;
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+tContext context;
 
 void getBBoxGrid(math::Box const& bbox, int size, std::vector<math::Vector3> &points)
 {
@@ -125,9 +144,8 @@ math::Box getModelBox(physics::ModelPtr const& model)
     return box;
 }
 
-bool doQueryGazeboVisibility(physics::WorldPtr world, sdf::ElementPtr sdf, gazebo_visibility_ros::QueryGazeboVisibility::Request &request, gazebo_visibility_ros::QueryGazeboVisibility::Response &response)
+bool performRayTrace(physics::WorldPtr world, gazebo::physics::ShapePtr ray, gazebo_visibility_ros::QueryGazeboVisibility::Request &request, gazebo_visibility_ros::QueryGazeboVisibility::Response &response)
 {
-    ROS_INFO("Got QueryGazeboVisibility service request.");
     physics::ModelPtr model = world->GetModel(request.name);
     if((!model.get()))
     {
@@ -173,34 +191,16 @@ bool doQueryGazeboVisibility(physics::WorldPtr world, sdf::ElementPtr sdf, gazeb
     int maxK = points.size();
     int okPoints = 0;
 
-    if(5 <= GAZEBO_MAJOR_VERSION)
+    for(int k = 0; k < maxK; k++)
     {
-        gazebo::physics::PhysicsEnginePtr engine = world->GetPhysicsEngine();
-        engine->InitForThread();
-
-        gazebo::physics::ShapePtr ray = engine->CreateShape("ray", gazebo::physics::CollisionPtr());
-
-        for(int k = 0; k < maxK; k++)
+        math::Vector3 end = getEndPoint(start, points[k], request.max_distance);
+        if(inImage(start, end, cameraFwd, cameraSide, cameraUp, upAngle, sideAngle))
         {
-            math::Vector3 end = getEndPoint(start, points[k], request.max_distance);
-            if(inImage(start, end, cameraFwd, cameraSide, cameraUp, upAngle, sideAngle))
-            {
-                boost::dynamic_pointer_cast<gazebo::physics::RayShape>(ray)->SetPoints(start, end);
-                double dist;
-                std::string entityName;
-                boost::dynamic_pointer_cast<gazebo::physics::RayShape>(ray)->GetIntersection(dist, entityName);
-                if(request.name == trimSubEnts(entityName))
-                    okPoints++;
-            }
-        }
-    }
-    else
-    {
-        for(int k = 0; k < maxK; k++)
-        {
-            /*A bit of a hack to get something running on older gazebo versions, even if a little.*/
-            math::Vector3 end = getEndPoint(start, points[k], request.max_distance);
-            if(inImage(start, end, cameraFwd, cameraSide, cameraUp, upAngle, sideAngle))
+            boost::dynamic_pointer_cast<gazebo::physics::RayShape>(ray)->SetPoints(start, end);
+            double dist;
+            std::string entityName;
+            boost::dynamic_pointer_cast<gazebo::physics::RayShape>(ray)->GetIntersection(dist, entityName);
+            if(request.name == trimSubEnts(entityName))
                 okPoints++;
         }
     }
@@ -214,11 +214,76 @@ bool doQueryGazeboVisibility(physics::WorldPtr world, sdf::ElementPtr sdf, gazeb
     return true;
 }
 
+void* raytracerFn(void* arg)
+{
+    context.engine = context.world->GetPhysicsEngine();
+    context.engine->InitForThread();
+
+    context.ray = context.engine->CreateShape("ray", gazebo::physics::CollisionPtr());
+
+    bool goOn = true;
+    do
+    {
+        ros::Duration(0.01).sleep();
+        pthread_mutex_lock((context.mutex));
+        goOn = (!(context.pleaseFinish));
+        if(goOn && (context.haveRequest))
+        {
+            context.haveRequest = false;
+            performRayTrace(context.world, context.ray, context.request, context.response);
+            context.haveResult = true;
+        }
+        pthread_mutex_unlock((context.mutex));
+    }while(goOn);
+
+    return 0;
+}
+
+bool doQueryGazeboVisibility(gazebo_visibility_ros::QueryGazeboVisibility::Request &request, gazebo_visibility_ros::QueryGazeboVisibility::Response &response)
+{
+    pthread_mutex_lock(context.mutex);
+    context.request = request;
+    context.response = response;
+    context.haveRequest = true;
+    pthread_mutex_unlock(context.mutex);
+
+    ROS_INFO("Got QueryGazeboVisibility service request.");
+
+    bool gotResult = false;
+    do
+    {
+      ros::Duration(0.01).sleep();
+      pthread_mutex_lock(context.mutex);
+      gotResult = context.haveResult;
+      if(gotResult)
+      {
+          context.haveResult = false;
+          response = context.response;
+      }
+      pthread_mutex_unlock(context.mutex);
+    }while(!gotResult);
+
+    return true;
+}
+
 class GazeboVisibilityROS : public WorldPlugin
 {
 public:
   GazeboVisibilityROS() : WorldPlugin(), n("~")
   {
+      rayTracerStarted = false;
+  }
+
+  ~GazeboVisibilityROS()
+  {
+      if(rayTracerStarted)
+      {
+        pthread_mutex_lock(context.mutex);
+        context.pleaseFinish = true;
+        pthread_mutex_unlock(context.mutex);
+        pthread_join(rayTracer, NULL);
+        rayTracerStarted = false;
+      }
   }
 
   void Load(physics::WorldPtr world, sdf::ElementPtr sdf)
@@ -237,7 +302,18 @@ public:
     ROS_INFO("Starting up the QueryGazeboVisibility service.");
 
     queryGazeboVisibility_service = n.advertiseService<gazebo_visibility_ros::QueryGazeboVisibility::Request, gazebo_visibility_ros::QueryGazeboVisibility::Response>("/gazebo_visibility_ros/QueryGazeboVisibility",
-                                                       boost::bind(doQueryGazeboVisibility, _world, _sdf, _1, _2));
+                                                       //boost::bind(doQueryGazeboVisibility, &context, _1, _2)
+                                                       doQueryGazeboVisibility);
+
+    context.world = world;
+    context.sdf = sdf;
+    context.haveRequest = false;
+    context.pleaseFinish = false;
+    context.mutex = &mutex;
+    context.haveResult = false;
+
+    pthread_create(&rayTracer, NULL, raytracerFn, (void*)(&context));
+    rayTracerStarted = true;
 
   }
 
@@ -246,6 +322,9 @@ private:
   sdf::ElementPtr _sdf;
   ros::NodeHandle n;
   ros::ServiceServer queryGazeboVisibility_service;
+
+  pthread_t rayTracer;
+  bool rayTracerStarted;
 
 };
 GZ_REGISTER_WORLD_PLUGIN(GazeboVisibilityROS)
