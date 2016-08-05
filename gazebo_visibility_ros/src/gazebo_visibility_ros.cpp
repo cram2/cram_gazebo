@@ -3,6 +3,8 @@
 #include <deque>
 #include <sdf/sdf.hh>
 
+#include <stdlib.h>
+
 #include <gazebo/common/Plugin.hh>
 #include <ros/ros.h>
 
@@ -224,7 +226,7 @@ void* raytracerFn(void* arg)
     bool goOn = true;
     do
     {
-        ros::Duration(0.01).sleep();
+        usleep(10000);
         pthread_mutex_lock((context.mutex));
         goOn = (!(context.pleaseFinish));
         if(goOn && (context.haveRequest))
@@ -252,7 +254,7 @@ bool doQueryGazeboVisibility(gazebo_visibility_ros::QueryGazeboVisibility::Reque
     bool gotResult = false;
     do
     {
-      ros::Duration(0.01).sleep();
+      usleep(10000);
       pthread_mutex_lock(context.mutex);
       gotResult = context.haveResult;
       if(gotResult)
