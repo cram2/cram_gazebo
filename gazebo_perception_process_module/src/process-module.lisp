@@ -157,6 +157,31 @@ purposes."
                            model-name)))
                       model-names)))
 
+(defun register-bullet-object (name pose)
+  ;; TODO: Check if `name' is present. If it is, update it's
+  ;; `pose'. If it is not, assert it at `pose'.
+  (let ((description (cram-gazebo-utilities:spawned-object-description
+                      name)))
+    (when description
+      ;; Only valid if the object was spawned by us; otherwise, we
+      ;; don't know anything about it. This is a particularity of the
+      ;; simulated case and does not affect the `real' world
+      ;; scenarios.
+      (let ((object-type (cdr (assoc :type description)))
+            (dimensions (cdr (assoc :dimensions description)))
+            (urdf-model (cdr (assoc :urdf-model description))))
+        ;; TODO: Update the object details here if present, and assert
+        ;; it if not
+        ))))
+
+(defun register-bullet-objects (object-names)
+  ;; TODO: Update the bullet scene according to the object names
+  ;; detected.
+  (loop for object-name in object-names
+        as object-pose = (cram-gazebo-utilities:get-model-pose
+                          object-name)
+        do (register-bullet-object object-name object-pose)))
+
 (defun find-objects (&key object-name)
   "Finds objects based on either their name `object-name' or their
 type `object-type', depending what is given. An invalid combination of
@@ -164,23 +189,25 @@ both parameters will result in an empty list. When no parameters are
 given, all known objects from the knowledge base are returned."
   (let* ((model-names (mapcar #'car (cram-gazebo-utilities:get-models)))
          (filtered-model-names (filter-models-by-ignored-objects
-                                model-names))
-         (filtered-model-names (filter-models-by-name
-                                filtered-model-names
-                                :template-name object-name))
-         ;; TODO: Fix this external component; it returns all spawned
-         ;; objects instead of the currently visible ones. This is
-         ;; intended behavior and is related to problems in Gazebo
-         ;; 2.2.3 w.r.t. raytracing code.
-         ;(filtered-model-names (filter-models-by-field-of-view
-         ;                       filtered-model-names))
-         )
-    (mapcar (lambda (model-name)
-              (let ((pose (cram-gazebo-utilities:get-model-pose model-name)))
-                (make-instance 'gazebo-designator-shape-data
-                               :object-identifier model-name
-                               :pose pose)))
-            filtered-model-names)))
+                                model-names)))
+    (register-bullet-objects model-names)
+    (let* ((filtered-model-names (filter-models-by-name
+                                  filtered-model-names
+                                  :template-name object-name))
+            ;; TODO: Fix this external component; it returns all spawned
+            ;; objects instead of the currently visible ones. This is
+            ;; intended behavior and is related to problems in Gazebo
+            ;; 2.2.3 w.r.t. raytracing code.
+            ;;(filtered-model-names (filter-models-by-field-of-view
+            ;;                       filtered-model-names))
+            )
+      (mapcar (lambda (model-name)
+                (let ((pose (cram-gazebo-utilities:get-model-pose
+                             model-name)))
+                  (make-instance 'gazebo-designator-shape-data
+                                 :object-identifier model-name
+                                 :pose pose)))
+              filtered-model-names))))
 
 (defun find-with-designator (designator)
   (let* ((template-name (desig-prop-value designator :name))
