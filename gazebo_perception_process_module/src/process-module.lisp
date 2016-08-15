@@ -115,14 +115,14 @@ purposes."
         (t model-names)))
 
 (defun filter-models-by-field-of-view (model-names)
-  (let* ((camera-pose (cl-transforms-stamped:lookup-transform
-                       (ensure-tf-listener) "odom_combined" "head_tilt_link"
-                       :timeout 2.0))
+  (let* ((camera-pose-raw (cl-transforms-stamped:lookup-transform
+                           (ensure-tf-listener) "odom_combined" "head_tilt_link"
+                           :timeout 2.0))
          (camera-fwd (cl-transforms-stamped:make-3d-vector 1 0 0))
-         (camera-fwd (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose) camera-fwd))
+         (camera-fwd (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose-raw) camera-fwd))
          (camera-up (cl-transforms-stamped:make-3d-vector 0 0 1))
-         (camera-up (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose) camera-up))
-         (camera-pose (cl-transforms-stamped:translation camera-pose))
+         (camera-up (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose-raw) camera-up))
+         (camera-pose (cl-transforms-stamped:translation camera-pose-raw))
          (camera-pose (roslisp:make-message "geometry_msgs/Point"
                                             :x (cl-transforms-stamped:x camera-pose)
                                             :y (cl-transforms-stamped:y camera-pose)
@@ -141,21 +141,22 @@ purposes."
          (max-distance 12)
          (threshold 0.2))
     (cpl:mapcar-clean (lambda (model-name)
-                        (roslisp:with-fields (visible)
-                            (roslisp:call-service "/gazebo_visibility_ros/QueryGazeboVisibility"
-                                                  "gazebo_visibility_ros/QueryGazeboVisibility"
-                                                  :name model-name
-                                                  :camera_pose camera-pose
-                                                  :camera_fwd camera-fwd
-                                                  :camera_up camera-up
-                                                  :focal_distance focal-distance
-                                                  :width width
-                                                  :height height
-                                                  :max_distance max-distance
-                                                  :threshold threshold)
-                         (unless (eql visible 0)
-                           model-name)))
-                      model-names)))
+                        (let ((result (roslisp:call-service
+                                       "/gazebo_visibility_ros/QueryGazeboVisibility"
+                                       "gazebo_visibility_ros/QueryGazeboVisibility"
+                                       :name model-name
+                                       :camera_pose camera-pose
+                                       :camera_fwd camera-fwd
+                                       :camera_up camera-up
+                                       :focal_distance focal-distance
+                                       :width width
+                                       :height height
+                                       :max_distance max-distance
+                                       :threshold threshold)))
+                          (roslisp:with-fields (visible) result
+                            (unless (eql visible 0)
+                              model-name))))
+                        model-names)))
 
 (defun find-objects (&key object-name)
   "Finds objects based on either their name `object-name' or their
