@@ -58,6 +58,9 @@
       filtered-objects)))
 
 ; Start of the original module
+(defmethod cram-occasions-events::on-event object-perceived ((event cram-plan-occasions-events::object-perceived-event))
+  (format t "This is the function defined in the gazebo perception process module. The event object is: ~a~%" (cram-plan-occasions-events::event-object-designator event)))
+
 (defmethod designator-pose ((designator object-designator))
   (object-pose (reference designator)))
 
@@ -165,7 +168,7 @@ purposes."
       (,(tf:x orientation) ,(tf:y orientation)
        ,(tf:z orientation) ,(tf:w orientation)))))
 
-(defun register-bullet-object (name pose)
+(defun register-perceived-object (name pose)
   ;; TODO: Check if `name' is present. If it is, update it's
   ;; `pose'. If it is not, assert it at `pose'.
   (let ((description (cram-gazebo-utilities:spawned-object-description
@@ -178,6 +181,18 @@ purposes."
       (let ((object-type (cadr (assoc :type description)))
             (dimensions (cadr (assoc :dimensions description)))
             (urdf-model (cadr (assoc :urdf-model description))))
+        (cram-plan-occasions-events::on-event
+         (make-instance
+          'cram-plan-occasions-events:object-perceived-event
+          :object-designator (make-designator
+                              :object
+                              `((:name ,name)
+                                (:type ,object-type)
+                                (:dimensions ,dimensions)
+                                (:urdf-model ,urdf-model)
+                                (:at ,(make-designator
+                                       :location
+                                       `((:pose ,pose))))))))
         (let* ((ignored-bullet-objects `())
                (all-bullet-objects
                  (cut:force-ll
@@ -207,13 +222,13 @@ purposes."
                                   ,(tf:y dimensions)
                                   ,(tf:z dimensions)))))))))))))
 
-(defun register-bullet-objects (object-names)
+(defun register-perceived-objects (object-names)
   ;; TODO: Update the bullet scene according to the object names
   ;; detected.
   (loop for object-name in object-names
         as object-pose = (cram-gazebo-utilities:get-model-pose
                           object-name)
-        do (register-bullet-object object-name object-pose)))
+        do (register-perceived-object object-name object-pose)))
 
 (defun find-objects (&key object-name)
   "Finds objects based on either their name `object-name' or their
@@ -223,7 +238,7 @@ given, all known objects from the knowledge base are returned."
   (let* ((model-names (mapcar #'car (cram-gazebo-utilities:get-models)))
          (filtered-model-names (filter-models-by-ignored-objects
                                 model-names)))
-    (register-bullet-objects model-names)
+    (register-perceived-objects model-names)
     (let* ((filtered-model-names (filter-models-by-name
                                   filtered-model-names
                                   :template-name object-name))
