@@ -192,7 +192,8 @@ purposes."
                                 (:urdf-model ,urdf-model)
                                 (:at ,(make-designator
                                        :location
-                                       `((:pose ,pose))))))))
+                                       `((:pose ,pose))))))
+          :perception-source :gazebo))
         (let* ((ignored-bullet-objects `())
                (all-bullet-objects
                  (cut:force-ll
