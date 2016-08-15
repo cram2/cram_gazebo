@@ -178,26 +178,30 @@ purposes."
       ;; don't know anything about it. This is a particularity of the
       ;; simulated case and does not affect the `real' world
       ;; scenarios.
-      (let ((object-type (cadr (assoc :type description)))
-            (dimensions (cadr (assoc :dimensions description)))
-            (urdf-model (cadr (assoc :urdf-model description))))
+      (let* ((object-type (cadr (assoc :type description)))
+             (dimensions (cadr (assoc :dimensions description)))
+             (urdf-model (cadr (assoc :urdf-model description)))
+             (designator (make-effective-designator
+                          (make-designator
+                           :object
+                           (append
+                            `((:name ,name)
+                              (:type ,object-type)
+                              (:dimensions ,dimensions)
+                              (:urdf-model ,urdf-model)
+                              (:at ,(make-designator
+                                     :location
+                                     `((:pose ,pose)))))
+                            (cram-gazebo-utilities:spawned-object-description
+                             name)))
+                          :data-object (make-instance 'gazebo-designator-data
+                                                      :type object-type
+                                                      :object-identifier name
+                                                      :pose pose))))
         (cram-plan-occasions-events::on-event
          (make-instance
           'cram-plan-occasions-events:object-perceived-event
-          :object-designator (make-effective-designator
-                              (make-designator
-                               :object
-                               `((:name ,name)
-                                 (:type ,object-type)
-                                 (:dimensions ,dimensions)
-                                 (:urdf-model ,urdf-model)
-                                 (:at ,(make-designator
-                                        :location
-                                        `((:pose ,pose))))))
-                              :data-object (make-instance 'gazebo-designator-data
-                                                          :type object-type
-                                                          :object-identifier name
-                                                          :pose pose))
+          :object-designator designator
           :perception-source :gazebo))
         (let* ((ignored-bullet-objects `())
                (all-bullet-objects
@@ -226,7 +230,8 @@ purposes."
                           :mass 0.1
                           :size (,(tf:x dimensions)
                                   ,(tf:y dimensions)
-                                  ,(tf:z dimensions)))))))))))))
+                                  ,(tf:z dimensions))))))))
+          designator)))))
 
 (defun register-perceived-objects (object-names)
   ;; TODO: Update the bullet scene according to the object names
@@ -234,7 +239,7 @@ purposes."
   (loop for object-name in object-names
         as object-pose = (cram-gazebo-utilities:get-model-pose
                           object-name)
-        do (register-perceived-object object-name object-pose)))
+        collect (cons object-name (register-perceived-object object-name object-pose))))
 
 (defun find-objects (&key object-name)
   "Finds objects based on either their name `object-name' or their
@@ -243,8 +248,8 @@ both parameters will result in an empty list. When no parameters are
 given, all known objects from the knowledge base are returned."
   (let* ((model-names (mapcar #'car (cram-gazebo-utilities:get-models)))
          (filtered-model-names (filter-models-by-ignored-objects
-                                model-names)))
-    (register-perceived-objects model-names)
+                                model-names))
+         (designators (register-perceived-objects model-names)))
     (let* ((filtered-model-names (filter-models-by-name
                                   filtered-model-names
                                   :template-name object-name))
@@ -255,36 +260,19 @@ given, all known objects from the knowledge base are returned."
             ;;(filtered-model-names (filter-models-by-field-of-view
             ;;                       filtered-model-names))
             )
-      (mapcar (lambda (model-name)
-                (let ((pose (cram-gazebo-utilities:get-model-pose
-                             model-name)))
-                  (make-instance 'gazebo-designator-shape-data
-                                 :object-identifier model-name
-                                 :pose pose)))
-              filtered-model-names))))
+      (cpl:mapcar-clean (lambda (model-name)
+                          (cadr (assoc model-name designators :test #'equal)))
+                        filtered-model-names))))
 
 (defun find-with-designator (designator)
   (let* ((template-name (desig-prop-value designator :name))
          (template-type (desig-prop-value designator :type))
          (models (find-objects :object-name template-name)))
     (cpl:mapcar-clean (lambda (model)
-                        (with-slots ((model-name desig::object-identifier) (pose desig::pose)) model
-                          (let* ((pose (cram-gazebo-utilities:get-model-pose model-name))
-                                 (location (make-designator :location `((:pose ,pose))))
-                                 (description (cram-gazebo-utilities:spawned-object-description model-name))
-                                 (description-type (cadr (find :type description :test (lambda (x y)
-                                                                                         (eql x (car y))))))
-                                 (model-data (make-instance 'gazebo-designator-shape-data
-                                                            :object-identifier model-name
-                                                            :pose pose)))
-                            (when (or (and template-type (equal template-type description-type))
-                                      (not template-type))
-                              (make-effective-designator
-                               designator
-                               :new-properties (append `((:name ,model-name)
-                                                         (:at ,location))
-                                                       description)
-                               :data-object model-data)))))
+                        (let ((description-type (desig-prop-value model :type)))
+                          (when (or (and template-type (equal template-type description-type))
+                                    (not template-type))
+                            model)))
                       models)))
 
 (defun get-bullet-objects ()
