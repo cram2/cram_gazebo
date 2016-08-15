@@ -184,15 +184,20 @@ purposes."
         (cram-plan-occasions-events::on-event
          (make-instance
           'cram-plan-occasions-events:object-perceived-event
-          :object-designator (make-designator
-                              :object
-                              `((:name ,name)
-                                (:type ,object-type)
-                                (:dimensions ,dimensions)
-                                (:urdf-model ,urdf-model)
-                                (:at ,(make-designator
-                                       :location
-                                       `((:pose ,pose))))))
+          :object-designator (make-effective-designator
+                              (make-designator
+                               :object
+                               `((:name ,name)
+                                 (:type ,object-type)
+                                 (:dimensions ,dimensions)
+                                 (:urdf-model ,urdf-model)
+                                 (:at ,(make-designator
+                                        :location
+                                        `((:pose ,pose))))))
+                              :data-object (make-instance 'gazebo-designator-data
+                                                          :type object-type
+                                                          :object-identifier name
+                                                          :pose pose))
           :perception-source :gazebo))
         (let* ((ignored-bullet-objects `())
                (all-bullet-objects
