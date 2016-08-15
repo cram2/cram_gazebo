@@ -158,6 +158,13 @@ purposes."
                               model-name))))
                         model-names)))
 
+(defun pose->list (pose)
+  (let ((origin (tf:origin pose))
+        (orientation (tf:orientation pose)))
+    `((,(tf:x origin) ,(tf:y origin) ,(tf:z origin))
+      (,(tf:x orientation) ,(tf:y orientation)
+       ,(tf:z orientation) ,(tf:w orientation)))))
+
 (defun register-bullet-object (name pose)
   ;; TODO: Check if `name' is present. If it is, update it's
   ;; `pose'. If it is not, assert it at `pose'.
@@ -168,12 +175,37 @@ purposes."
       ;; don't know anything about it. This is a particularity of the
       ;; simulated case and does not affect the `real' world
       ;; scenarios.
-      (let ((object-type (cdr (assoc :type description)))
-            (dimensions (cdr (assoc :dimensions description)))
-            (urdf-model (cdr (assoc :urdf-model description))))
-        ;; TODO: Update the object details here if present, and assert
-        ;; it if not
-        ))))
+      (let ((object-type (cadr (assoc :type description)))
+            (dimensions (cadr (assoc :dimensions description)))
+            (urdf-model (cadr (assoc :urdf-model description))))
+        (let* ((ignored-bullet-objects `())
+               (all-bullet-objects
+                 (cut:force-ll
+                  (cut:lazy-mapcar
+                   (lambda (bdgs)
+                     (cut:with-vars-bound (?o) bdgs
+                       ?o))
+                   (cram-prolog:prolog
+                    `(and (btr:bullet-world ?w)
+                          (btr:object ?w ?o)
+                          (not (btr::robot ?o))
+                          (not (member ?o ,ignored-bullet-objects))))))))
+          (cond ((find name all-bullet-objects :test #'equal) ;; Object already exists (by name)
+                 (cram-prolog:prolog
+                  `(and (btr:bullet-world ?w)
+                        (btr:assert
+                         (btr:object-pose ?w ,name ,(pose->list pose))))))
+                (t ;; Object new
+                 (cram-prolog:prolog
+                  `(and (btr:bullet-world ?w)
+                        (btr:assert
+                         (btr:object
+                          ?w :box
+                          ,name ,pose
+                          :mass 0.1
+                          :size (,(tf:x dimensions)
+                                  ,(tf:y dimensions)
+                                  ,(tf:z dimensions)))))))))))))
 
 (defun register-bullet-objects (object-names)
   ;; TODO: Update the bullet scene according to the object names
