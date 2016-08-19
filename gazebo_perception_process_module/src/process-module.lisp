@@ -194,7 +194,7 @@ purposes."
                                      `((:pose ,pose)))))
                             (cram-gazebo-utilities:spawned-object-description
                              name)))
-                          :data-object (make-instance 'gazebo-designator-data
+                          :data-object (make-instance 'gazebo-designator-shape-data
                                                       :type object-type
                                                       :object-identifier name
                                                       :pose pose))))
@@ -234,12 +234,12 @@ purposes."
           designator)))))
 
 (defun register-perceived-objects (object-names)
-  ;; TODO: Update the bullet scene according to the object names
-  ;; detected.
   (loop for object-name in object-names
         as object-pose = (cram-gazebo-utilities:get-model-pose
                           object-name)
-        collect (cons object-name (register-perceived-object object-name object-pose))))
+        as designator = (register-perceived-object object-name object-pose)
+        when designator
+          collect (cons object-name designator)))
 
 (defun find-objects (&key object-name)
   "Finds objects based on either their name `object-name' or their
@@ -261,7 +261,7 @@ given, all known objects from the knowledge base are returned."
             ;;                       filtered-model-names))
             )
       (cpl:mapcar-clean (lambda (model-name)
-                          (cadr (assoc model-name designators :test #'equal)))
+                          (cdr (assoc model-name designators :test #'equal)))
                         filtered-model-names))))
 
 (defun find-with-designator (designator)
