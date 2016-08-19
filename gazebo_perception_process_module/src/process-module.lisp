@@ -115,11 +115,11 @@ purposes."
         (t model-names)))
 
 (defun filter-models-by-field-of-view (model-names)
-  (let* ((camera-pose-raw (cl-transforms-stamped:lookup-transform
-                           (ensure-tf-listener) "odom_combined" "head_tilt_link"
-                           :timeout 2.0))
+  (let* ((camera-pose (cl-transforms-stamped:lookup-transform
+                       (ensure-tf-listener) "odom_combined" "head_tilt_link"
+                       :timeout 2.0))
          (camera-fwd (cl-transforms-stamped:make-3d-vector 1 0 0))
-         (camera-fwd (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose-raw) camera-fwd))
+         (camera-fwd (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose) camera-fwd))
          (camera-up (cl-transforms-stamped:make-3d-vector 0 0 1))
          (camera-up (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose) camera-up))
          (camera-pose (cl-tf:v+ (cl-transforms-stamped:rotate (cl-transforms-stamped:rotation camera-pose)
