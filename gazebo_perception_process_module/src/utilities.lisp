@@ -107,10 +107,10 @@
            (object-camera (tf:v- object-origin camera-origin))
            (angle (acos (/ (scalar-product view-direction object-camera)
                            (norm (tf:v* view-direction
-                                        (norm object-camera)))))))
+                                        (norm object-camera))))))
+           (distance (tf:v-dist camera-origin object-origin)))
       (and (<= angle (/ fov 2))
-           (<= (tf:v-dist camera-origin object-origin)
-               distance-limit)))))
+           (<= distance distance-limit)))))
 
 (defun object-visible (object-pose)
   (let ((camera (active-camera)))
