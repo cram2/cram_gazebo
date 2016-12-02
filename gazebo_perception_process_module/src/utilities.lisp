@@ -28,7 +28,43 @@
 
 (in-package :gazebo-perception-pm)
 
+(defclass camera ()
+  ((name :initform nil :initarg :name :reader :name)
+   (tf-frame :initform nil :initarg :tf-frame :reader :tf-frame)
+   (fixed-pose :initform nil :initarg :fixed-pose :reader :fixed-pose)
+   (fov :initform nil :initarg :fov :reader :fov)
+   (distance-limit :initform nil :initarg :distance-limit :reader :distance-limit)))
+
+(defvar *active-camera* nil)
 (defvar *ignored-objects* nil)
+
+(defun set-camera (camera)
+  (setf *active-camera* camera)
+  (cond (camera
+         (roslisp:ros-info (gazebo-pm) "Camera '~a' now active"
+                           (slot-value camera 'name)))
+        (t (roslisp:ros-info (gazebo-pm) "Camera deactivated"))))
+
+(defun set-tf-camera (tf-frame fov distance-limit)
+  (set-camera
+   (make-instance 'camera :name tf-frame
+                          :tf-frame tf-frame
+                          :fov fov
+                          :distance-limit distance-limit)))
+
+(defun active-camera ()
+  *active-camera*)
+
+(defun camera-pose (camera &key (fixed-frame "map"))
+  (cond ((slot-value camera 'tf-frame)
+         (tf:transform-pose-stamped
+          cram-tf:*transformer*
+          :pose (tf:pose->pose-stamped
+                 (slot-value camera 'tf-frame) 0.0
+                 (tf:make-identity-pose))
+          :target-frame fixed-frame))
+        ((slot-value camera 'fixed-pose)
+         (slot-value camera 'fixed-pose))))
 
 (defun object-names-equal (name-1 name-2)
   "In designators, we want to support symbols as names, too. It first
@@ -50,3 +86,39 @@
 
 (defun is-object-ignored (name)
   (not (not (find name *ignored-objects* :test #'string=))))
+
+(defun object-in-fov (object-pose camera-pose fov distance-limit)
+  (labels ((scalar-product (v-1 v-2)
+             (+ (* (tf:x v-1) (tf:x v-2))
+                (* (tf:y v-1) (tf:y v-2))
+                (* (tf:z v-1) (tf:z v-2))))
+           (norm (v)
+             (sqrt (+ (* (tf:x v) (tf:x v))
+                      (* (tf:y v) (tf:y v))
+                      (* (tf:z v) (tf:z v))))))
+    (let* ((object-origin (tf:origin object-pose))
+           (camera-origin (tf:origin camera-pose))
+           (camera-orientation
+             (tf:quaternion->matrix (tf:orientation camera-pose)))
+           (view-direction
+             (tf:make-3d-vector (aref camera-orientation 0 0)
+                                (- (aref camera-orientation 0 1))
+                                (aref camera-orientation 0 2)))
+           (object-camera (tf:v- object-origin camera-origin))
+           (angle (acos (/ (scalar-product view-direction object-camera)
+                           (norm (tf:v* view-direction
+                                        (norm object-camera)))))))
+      (and (<= angle (/ fov 2))
+           (<= (tf:v-dist camera-origin object-origin)
+               distance-limit)))))
+
+(defun object-visible (object-pose)
+  (let ((camera (active-camera)))
+    (cond (camera ;; There is an active camera, so visibility is checked
+           (let ((camera-pose (camera-pose camera)))
+             (object-in-fov
+              object-pose
+              camera-pose
+              (slot-value camera 'fov)
+              (slot-value camera 'distance-limit))))
+          (t t))))

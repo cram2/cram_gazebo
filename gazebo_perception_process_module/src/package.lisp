@@ -37,7 +37,7 @@
    #:roslisp
    #:cram-plan-failures)
   (:export #:gazebo-perception-process-module
-           ignore-object)
+           ignore-object set-camera camera set-tf-camera)
   (:shadowing-import-from #:cpl fail)
   (:import-from #:cram-process-modules
                 matching-process-module available-process-module)

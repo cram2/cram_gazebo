@@ -174,8 +174,9 @@ purposes."
   ;; TODO: Check if `name' is present. If it is, update it's
   ;; `pose'. If it is not, assert it at `pose'.
   (let ((description (cram-gazebo-utilities:spawned-object-description
-                      name)))
-    (when description
+                      name))
+        (object-visible (object-visible pose)))
+    (when (and description object-visible)
       ;; Only valid if the object was spawned by us; otherwise, we
       ;; don't know anything about it. This is a particularity of the
       ;; simulated case and does not affect the `real' world
