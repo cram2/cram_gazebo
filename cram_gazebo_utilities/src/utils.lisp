@@ -95,10 +95,11 @@
   (register-spawned-object name description))
 
 (defun delete-gazebo-model (name)
-  (call-service "gazebo/delete_model"
-                'gazebo_msgs-srv:deletemodel
-                :model_name name)
-  (unregister-spawned-object name))
+  (prog1
+      (call-service "gazebo/delete_model"
+                    'gazebo_msgs-srv:deletemodel
+                    :model_name name)
+    (unregister-spawned-object name)))
 
 (defun model-present (name)
   (with-fields (success)
