@@ -175,3 +175,16 @@
     (declare (ignore position max))
     (when success
       (set-joint-position model joint min hold))))
+
+(defun pause-physics ()
+  (call-service "gazebo/pause_physics" 'std_srvs-srv:empty))
+
+(defun unpause-physics ()
+  (call-service "gazebo/unpause_physics" 'std_srvs-srv:empty))
+
+(defmacro with-physics-paused (&body body)
+  `(block paused
+     (pause-physics)
+     (unwind-protect
+          ,@body
+       (unpause-physics))))
